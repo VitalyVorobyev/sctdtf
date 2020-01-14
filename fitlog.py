@@ -5,7 +5,121 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import chi2
 
-from event_generator import mass, make_hist
+from event_generator import UNIT, MASS_DICT, p3top4, mass_sq, mass, make_hist, energy
+import eintools as et
+
+def plot_hist(xi, xi0, pimgen, pipgen):
+    ks3 = pipgen + pimgen
+    xi_gen = np.hstack((pipgen, pimgen, energy(MASS_DICT['K0_S'], ks3).reshape(-1, 1), ks3))
+
+    def augment(xi):
+        ks_m = np.sqrt(xi[:,6]**2 - np.sum(xi[:,7:10]**2, axis=-1)).reshape(-1, 1)
+        ks_p = np.sqrt(np.sum(xi[:,7:10]**2, axis=-1)).reshape(-1, 1)
+        pip_p = np.sqrt(np.sum(xi[:,:3]**2, axis=-1)).reshape(-1, 1)
+        pim_p = np.sqrt(np.sum(xi[:,3:6]**2, axis=-1)).reshape(-1, 1)
+        dpx = (xi[:, 0] + xi[:, 3] - xi[:, 7]).reshape(-1, 1)
+        dpy = (xi[:, 1] + xi[:, 4] - xi[:, 8]).reshape(-1, 1)
+        dpz = (xi[:, 2] + xi[:, 5] - xi[:, 9]).reshape(-1, 1)
+
+        return np.hstack((xi, ks_m, ks_p, pip_p, pim_p, dpx, dpy, dpz))
+
+    xi = augment(xi)
+    xi0 = augment(xi0)
+    xi_gen = augment(xi_gen)
+
+    label = ['pip_px', 'pip_py', 'pip_pz', 'pim_px', 'pim_py', 'pim_pz', 
+    'ks_E', 'ks_px', 'ks_py', 'ks_pz', 'ks_m', 'ks_p', 'pip_p', 'pim_p', 'dpx', 'dpy', 'dpz']
+
+    for i in range(xi.shape[1]):
+        fitted = xi[:, i] - xi_gen[:, i]
+        unfitted = xi0[:, i] - xi_gen[:, i]
+
+        for _ in range(5):
+            fit_mean, fit_std = np.mean(fitted), np.std(fitted)
+            fitted = fitted[np.abs(fitted - fit_mean) < 5.*fit_std]
+            unfit_mean, unfit_std = np.mean(unfitted), np.std(unfitted)
+            unfitted = unfitted[np.abs(unfitted - unfit_mean) < 5.*unfit_std]
+
+        plt.figure(figsize=(8,6))
+        if len(fitted) != 0:
+            plt.errorbar(*make_hist(fitted, density=True), linestyle='none', marker='.', markersize=4, label='fit')
+        if len(unfitted) != 0:
+            plt.errorbar(*make_hist(unfitted, density=True), linestyle='none', marker='.', markersize=4, label='unfit')
+        plt.plot([], [], ' ', label="fit std {:0.3f}".format(fit_std))
+        plt.plot([], [], ' ', label="unfit std {:0.3f}".format(unfit_std))
+        plt.plot([], [], ' ', label="fit mean {:0.3f}".format(fit_mean))
+        plt.plot([], [], ' ', label="unfit mean {:0.3f}".format(unfit_mean))
+        plt.legend(loc='upper right')
+        plt.grid()
+        plt.xlabel(label[i], fontsize=16)
+        plt.tight_layout()
+        plt.savefig('fig/fit_{}.png'.format(label[i]))
+    plt.show()
+
+    
+
+def plot_pool(xi, cov, pimgen, pipgen):
+    ks3 = pipgen + pimgen
+    xi0 = np.hstack((pipgen, pimgen, energy(MASS_DICT['K0_S'], ks3).reshape(-1, 1), ks3))
+
+    label = ['pip_px', 'pip_py', 'pip_pz', 'pim_px', 'pim_py', 'pim_pz', 
+    'ks_E', 'ks_px', 'ks_py', 'ks_pz']
+
+    for i in range(xi.shape[1]):
+        m = (xi[:, i] - xi0[:, i]) / cov[:, i, i] ** 0.5
+        for _ in range(5):
+            mean, std = np.mean(m), np.std(m)
+            m = m[np.abs(m - mean) < 5.*std]
+        print(m.shape, np.mean(m), np.std(m))
+        if np.std(m) < 0.000001:
+            return
+        x, bins, e = make_hist(m)
+
+        plt.figure(figsize=(6,5))
+        plt.errorbar(x, bins, e, linestyle='none', marker='.', markersize=4)
+        plt.grid()
+        plt.xlabel(label[i], fontsize=16)
+        plt.tight_layout()
+        plt.savefig('fig/pool_{}.png'.format(label[i]))
+    plt.show()
+ 
+
+def plot_conservation(xi):
+    """ """
+    pi4p = p3top4(xi[:, 0:3], MASS_DICT['pi+'])       
+    pi4m = p3top4(xi[:, 3:6], MASS_DICT['pi+'])
+    
+    m = pi4m + pi4p - xi[:, 6:]
+
+    plt.figure(figsize=(6,5))
+    for i in range(4):
+        x, bins, e = make_hist(m[:, i])
+        plt.errorbar(x, bins, e, linestyle='none', marker='.', markersize=4, label=i)
+        plt.legend()
+
+    plt.grid()
+    plt.xlabel(r'$Conservation$ (MeV)', fontsize=16)
+    plt.tight_layout()
+    # plt.show()
+
+
+def plot_pipi_mass(xi):
+    """ """
+    pi4p = p3top4(xi[:, 0:3], MASS_DICT['pi+'])        
+    pi4m = p3top4(xi[:, 3:6], MASS_DICT['pi+'])
+    m = mass_sq(pi4p + pi4m)**0.5
+
+    if np.std(m) < 0.000001:
+        return
+    x, bins, e = make_hist(m)#, range=[497, 498])
+
+    plt.figure(figsize=(6,5))
+    plt.errorbar(x, bins, e, linestyle='none', marker='.', markersize=4)
+    plt.grid()
+    plt.xlabel(r'$m(\pi^+\pi^-)$ (MeV)', fontsize=16)
+    plt.tight_layout()
+    # plt.show()
+
 
 def plot_ks0_mass(xi):
     """ """
@@ -17,12 +131,12 @@ def plot_ks0_mass(xi):
     print(m.shape, np.mean(m), np.std(m))
     if np.std(m) < 0.000001:
         return
-    x, bins, e = make_hist(m, range=[497, 498])
+    x, bins, e = make_hist(m)#, range=[497, 498])
 
     plt.figure(figsize=(6,5))
     plt.errorbar(x, bins, e, linestyle='none', marker='.', markersize=4)
     plt.grid()
-    plt.xlabel(r'$m(\pi^+\pi^-)$ (MeV)', fontsize=16)
+    plt.xlabel(r'$m(K_S^0)$ (MeV)', fontsize=16)
     plt.tight_layout()
     # plt.show()
 
@@ -80,10 +194,14 @@ def print_log(data, niter):
         print_xi(data['xi'][iter][0])
 
 def main():
-    data = np.load('logs/fitres.npz')
-    plot_ks0_mass(data['xi'][-1])
-    plot_chi2(data['chi2'][-1])
-    plt.show()
+    data = np.load('logs/pfitres.npz')
+    # plot_ks0_mass(data['xi'][-1])
+    # plot_conservation(data['xi'][-1])
+    # plot_pipi_mass(data['xi'][-1])
+    # plot_chi2(data['chi2'][-1])
+    # plot_pool(data['xi'][-1], data['Ck'][-1], data['pimgen'], data['pipgen'])
+    plot_hist(data['xi'][-1], data['xi'][0], data['pimgen'], data['pipgen'])
+    # plt.show()
 
 if __name__ == '__main__':
     main()

@@ -77,13 +77,14 @@ def fit_to_ks(p3pip, p3pim, cov, nit=5):
 
     lam = 1*np.ones((N, 5))
 
-    logs = {key : [] for key in ['chi2', 'xi', 'grad', 'hess', 'det']}
+    logs = {key : [] for key in ['chi2', 'xi', 'grad', 'hess', 'det', 'cov']}
     def save_log(xi, p4pip, p4pim, grad, hess):
         logs['chi2'].append(chi2(p3pip0, p3pim0, p4pip, p4pim, covInv))
-        logs['xi'].append(xi.copy())
+        logs['xi'].append(xi[:, :10].copy())
         logs['grad'].append(grad.copy())
         logs['hess'].append(hess.copy())
         logs['det'].append(np.linalg.det(hess))
+        logs['cov'].append(2 * np.linalg.inv(hess))
 
     def calc(xi):
         p3pip, p3pim, p4ks, lam = xi[:, :3], xi[:, 3:6], xi[:, 6:10], xi[:, 10:]
@@ -108,12 +109,14 @@ def main():
     from event_generator import generate
     cov = np.diag([3,3,5])**2 * UNIT**2
     N = 10**4
-    (p3pip, p3pim), p3pipGen, p3pimGen = generate(N, cov)
+    ptot = np.array([1000, 0, 0])
+    (p3pip, p3pim), p3pipGen, p3pimGen = generate(N, cov, ptot=ptot)
 
     logs = fit_to_ks(p3pip, p3pim, cov, nit=10)
     np.savez('logs/fitres',
         chi2=logs['chi2'],
           xi=logs['xi'],
+          Ck=logs['cov'],
         grad=logs['grad'],
         hess=logs['hess'],
          det=logs['det'],

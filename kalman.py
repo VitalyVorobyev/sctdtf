@@ -77,15 +77,20 @@ def pfit_to_ks(p3pip, p3pim, cov, nit=5, gpit=3, gmit=3):
     logs = {key: [] for key in ['xi', 'cov', 'chi2', 'mk', 'chi2v0']}
     xi0 = xi.copy()
 
+    _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
+    logs['xi'].append(xi.copy())
+
     for idx in range(nit):
         print('Iteration {}'.format(idx+1))
+        Ck = np.zeros((N, ndim, ndim))
+        Ck[:] = 10**4*np.eye(ndim) * eg.UNIT**2
         chi2 = np.zeros(N)
 
         # Apply pi+ momentum measurement constraint #
         Hk = np.zeros((N, 3, ndim))
         Hk[:,:, :3] = np.eye(3)
         rk = xi[:,:3] - xi0[:,:3]
-        dxi, Ck, chi2k = apply_meas(Hk, rk, cov, Ck)
+        dxi, Ck, chi2k = apply_meas(Hk, -rk, cov, Ck)
         xi += dxi
         chi2 += chi2k
 
@@ -93,11 +98,12 @@ def pfit_to_ks(p3pip, p3pim, cov, nit=5, gpit=3, gmit=3):
         Hk = np.zeros((N, 3, ndim))
         Hk[:,:,3:6] = np.eye(3)
         rk = xi[:,3:6] - xi0[:,3:6]
-        dxi, Ck, chi2k = apply_meas(Hk, rk, cov, Ck)
+        dxi, Ck, chi2k = apply_meas(Hk, -rk, cov, Ck)
         xi += dxi
         chi2 += chi2k
-
+      
         # momentum conservation constraint #
+        gp_const = rf.gmomentum(p4pip, p4pim, p4ks)
         for _ in range(gpit):
             p3pip, p3pim, p4ks, p4pip, p4pim, epip, epim = unpack(xi)
             gp = rf.gmomentum(p4pip, p4pim, p4ks)
@@ -109,22 +115,29 @@ def pfit_to_ks(p3pip, p3pim, cov, nit=5, gpit=3, gmit=3):
             GCGTInv = gcgtinv(Gk, Ck)
             Kk = gain_exact(Ck, Gk, GCGTInv)
             xi += xi_upd(Kk, gp)
-        _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
+        # _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
         Ck = covariance_exact(Ck, Kk, Gk)
-        chi2 += et.chi2_item(gp, GCGTInv)
+        chi2 += et.chi2_item(gp_const, GCGTInv)
+
+        def gmass(p4ks):
+            return rf.MASS_DICT['K0_S']**2 - rf.mass_sq(p4ks)
 
         # mass constraint #
+        _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
+        gm_const = gmass(p4ks).reshape(-1, 1)
         for _ in range(gmit):
+            print('Mass iteration {}'.format(_ + 1))
             _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
-            gm = rf.gmass(p4pip, p4pim).reshape(-1, 1)
+            gm = gmass(p4ks).reshape(-1, 1)
+            # gm = rf.gmass(p4pip, p4pim).reshape(-1, 1)
             Gk = np.zeros((N, 1, ndim))
-            Gk[:,0,6:] = 2*np.einsum('ki, i -> ki', p4ks, np.array([-1, 1, 1, 1]))
+            Gk[:,0,6:] = 2 * np.einsum('ki, i -> ki', p4ks, np.array([-1, 1, 1, 1]))
             GCGTInv = gcgtinv(Gk, Ck)
             Kk = gain_exact(Ck, Gk, GCGTInv)
             xi += xi_upd(Kk, gm)
-        _, _, _, p4pip, p4pim, _, _ = unpack(xi)
+        # _, _, _, p4pip, p4pim, _, _ = unpack(xi)
         Ck = covariance_exact(Ck, Kk, Gk)
-        chi2 += et.chi2_item(gm, GCGTInv)
+        chi2 += et.chi2_item(gm_const, GCGTInv)
 
         # write log #
         _, _, p4ks, p4pip, p4pim, _, _ = unpack(xi)
@@ -140,10 +153,11 @@ def main():
     from event_generator import generate
     # et.VERB = True
     cov = np.diag([3,3,5])**2 * eg.UNIT**2
-    N = 10**3
-    (p3pip, p3pim), p3pipGen, p3pimGen = generate(N, cov)
+    N = 10**4
+    (p3pip, p3pim), p3pipGen, p3pimGen = generate(N, cov, np.array([1000, 0, 0]))
 
-    logs = pfit_to_ks(p3pip, p3pim, cov, nit=10, gpit=3, gmit=3)
+    logs = pfit_to_ks(p3pip, p3pim, cov, nit=5, gpit=3, gmit=3)
+    
     np.savez('logs/pfitres',
         chi2=logs['chi2'],
       chi2v0=logs['chi2v0'],

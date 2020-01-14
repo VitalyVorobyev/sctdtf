@@ -4,6 +4,7 @@
 
 import numpy as np
 import unittest
+import copy
 
 # UNIT = 10**-3
 UNIT = 1
@@ -83,7 +84,7 @@ def measurement_sampler(p3pip, p3pim, cov):
 def generate(N, cov, ptot=None):
     """ Generates N events for a given covariance matrix """
     p3pip, p3pim = ks2pipi(N, ptot)
-    return (measurement_sampler(p3pip, p3pim, cov), p3pip, p3pim)
+    return (measurement_sampler(copy.deepcopy(p3pip), copy.deepcopy(p3pim), cov), p3pip, p3pim)
 
 class TestGenerator(unittest.TestCase):
     N = 10**4
@@ -125,7 +126,7 @@ def resolution_plot():
     mpi = MASS_DICT['pi+']
     cov = np.diag([3,3,5])**2
     N = 10**5
-    p4pip, p4pim = [p3top4(p, mpi) for p in generate(N, cov)]
+    p4pip, p4pim = [p3top4(p, mpi) for p in generate(N, cov)[0]]
     x, bins, e = make_hist(mass(p4pip + p4pim))
 
     plt.figure(figsize=(6,5))
